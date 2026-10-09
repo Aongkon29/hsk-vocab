@@ -1829,8 +1829,8 @@ const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } cat
 /* ================= CLOUD SYNC (Supabase) ================= */
 const SB_URL = 'YOUR_SUPABASE_URL';
 const SB_KEY = 'YOUR_SUPABASE_ANON_KEY';
-let supabase = null;
-try { if (window.supabase && SB_URL && SB_URL.startsWith('http')) supabase = supabase.createClient(SB_URL, SB_KEY); } catch(e){}
+let sbClient = null;
+try { if (window.supabase && SB_URL && SB_URL.startsWith('http')) sbClient = window.supabase.createClient(SB_URL, SB_KEY); } catch(e){}
 const syncKey = () => { try { return localStorage.getItem(LS.syncKey) || ''; } catch(e){ return ''; } };
 
 function cloudPayload(){
@@ -1847,12 +1847,12 @@ function cloudPayload(){
 }
 async function pushCloud(quiet){
   const k = syncKey();
-  if (!supabase || !k) return;
+  if (!sbClient || !k) return;
   const dot = document.getElementById('syncDot');
   if (dot) dot.className = 'sync-dot busy';
   try {
     const p = cloudPayload();
-    const { error } = await supabase.from('progress').upsert(p, { onConflict: 'user_key' });
+    const { error } = await sbClient.from('progress').upsert(p, { onConflict: 'user_key' });
     if (error) throw error;
     if (dot) dot.className = 'sync-dot on';
   } catch(e){
@@ -1862,9 +1862,9 @@ async function pushCloud(quiet){
 }
 async function pullCloud(){
   const k = syncKey();
-  if (!supabase || !k) return false;
+  if (!sbClient || !k) return false;
   try {
-    const { data, error } = await supabase.from('progress').select('*').eq('user_key', k).maybeSingle();
+    const { data, error } = await sbClient.from('progress').select('*').eq('user_key', k).maybeSingle();
     if (error) throw error;
     if (data){
       state.marks = Object.assign({}, state.marks || {}, data.marks || {});
@@ -2430,14 +2430,14 @@ const syncStatus = $('#syncStatus');
 const syncDotEl = $('#syncDot');
 function setSyncDot(){
   if (!syncDotEl) return;
-  if (!supabase) syncDotEl.className = 'sync-dot';
+  if (!sbClient) syncDotEl.className = 'sync-dot';
   else if (syncKey()) syncDotEl.className = 'sync-dot on';
   else syncDotEl.className = 'sync-dot';
 }
 function showSyncStatus(msg, cls){ syncStatus.textContent = msg; syncStatus.className = 'sync-status' + (cls ? ' ' + cls : ''); }
 $('#syncBtn').addEventListener('click', () => {
   $('#syncKey').value = syncKey();
-  showSyncStatus(supabase ? '' : 'Supabase not configured — add your URL + key in the HTML.', 'no');
+  showSyncStatus(sbClient ? '' : 'Supabase not configured — add your URL + key in the HTML.', 'no');
   syncModal.classList.add('on');
 });
 $('#syncCancel').addEventListener('click', () => syncModal.classList.remove('on'));
@@ -2485,7 +2485,7 @@ window.addEventListener('hashchange', () => goTab((location.hash || '').replace(
 /* pull cloud progress on load if a sync key is set */
 (async () => {
   setSyncDot();
-  if (!syncKey() || !supabase) return;
+  if (!syncKey() || !sbClient) return;
   const pulled = await pullCloud();
   if (pulled){
     applyTheme();
