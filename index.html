@@ -414,7 +414,6 @@
   .rev-yes:hover{border-color:var(--ok);color:var(--ok);background:var(--ok-soft);}
   .rev-pause:hover{border-color:var(--gold);color:var(--gold);background:var(--gold-soft);}
 </style>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -1907,71 +1906,67 @@ function filterGrammar(mode, btn) {
 const LS = {
   marks:'hsk4_bookmarks', known:'hsk4_known', unknown:'hsk4_unknown',
   recall:'hsk4_recall', theme:'hsk4_theme', best:'hsk4_best',
-  revList:'hsk4_rev_list', revIdx:'hsk4_rev_idx', revKnown:'hsk4_rev_known', revUnknown:'hsk4_rev_unknown'
+  revList:'hsk4_rev_list', revIdx:'hsk4_rev_idx', revKnown:'hsk4_rev_known', revUnknown:'hsk4_rev_unknown',
+  reviseList:'hsk4_revise_list', token:'hsk4_token'
 };
 const read = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return (v === null || v === undefined) ? d : v; } catch(e){ return d; } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} };
 
-/* ================= AUTH (Supabase) ================= */
-const SB_URL = 'YOUR_SUPABASE_URL';
-const SB_KEY = 'YOUR_SUPABASE_ANON_KEY';
-let sbClient = null;
-try { if (window.supabase && SB_URL && SB_URL.startsWith('http')) sbClient = window.supabase.createClient(SB_URL, SB_KEY, { persistSession: true, autoRefreshToken: true }); } catch(e){}
-
+/* ================= AUTH + SYNC (Flask API) ================= */
+const API = '';  // same origin
+let authToken = '';
+try { authToken = localStorage.getItem(LS.token) || ''; } catch(e){}
 let currentUser = null;
-function userId(){ return currentUser ? currentUser.id : null; }
-function fakeEmail(u){ return (u || '').trim().toLowerCase() + '@hsk-vocab.local'; }
+
+async function apiCall(path, body){
+  const opts = { method: body ? 'POST' : 'GET', headers: {} };
+  if (authToken) opts.headers['Authorization'] = 'Bearer ' + authToken;
+  if (body){ opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+  const r = await fetch(API + path, opts);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+  return j;
+}
 
 async function authSignup(user, pass){
-  if (!sbClient) throw new Error('Supabase not configured');
-  const { data, error } = await sbClient.auth.signUp({ email: fakeEmail(user), password: pass });
-  if (error) throw error;
-  currentUser = data.user;
+  const j = await apiCall('/api/signup', { username: user, password: pass });
+  authToken = j.token;
+  try { localStorage.setItem(LS.token, authToken); } catch(e){}
+  currentUser = { id: j.user_id, username: j.username };
   return currentUser;
 }
 async function authSignin(user, pass){
-  if (!sbClient) throw new Error('Supabase not configured');
-  const { data, error } = await sbClient.auth.signInWithPassword({ email: fakeEmail(user), password: pass });
-  if (error) throw error;
-  currentUser = data.user;
+  const j = await apiCall('/api/login', { username: user, password: pass });
+  authToken = j.token;
+  try { localStorage.setItem(LS.token, authToken); } catch(e){}
+  currentUser = { id: j.user_id, username: j.username };
   return currentUser;
-}
-async function authSignout(){
-  if (sbClient) try { await sbClient.auth.signOut(); } catch(e){}
-  currentUser = null;
 }
 async function authSession(){
-  if (!sbClient) return null;
-  const { data } = await sbClient.auth.getSession();
-  currentUser = data.session ? data.session.user : null;
-  return currentUser;
+  if (!authToken) return null;
+  try {
+    const j = await apiCall('/api/load');
+    currentUser = { id: j.user_id || 0 };
+    return currentUser;
+  } catch(e){ authToken = ''; try { localStorage.removeItem(LS.token); } catch(_){} return null; }
 }
 
-/* ================= CLOUD SYNC (per authenticated user) ================= */
+/* ================= CLOUD SYNC ================= */
 function cloudPayload(){
   return {
-    user_id: userId(),
-    marks: state.marks,
-    known: state.known,
-    unknown: state.unknown,
-    best: state.best,
-    theme: state.theme,
-    recall: state.recall,
-    rev_list: state.revList,
-    rev_idx: state.revIdx,
-    rev_known: state.revKnown,
-    rev_unknown: state.revUnknown,
-    updated_at: new Date().toISOString()
+    marks: state.marks, known: state.known, unknown: state.unknown,
+    best: state.best, theme: state.theme, recall: state.recall,
+    revise_list: state.reviseList,
+    rev_list: state.revList, rev_idx: state.revIdx,
+    rev_known: state.revKnown, rev_unknown: state.revUnknown
   };
 }
 async function pushCloud(quiet){
-  if (!sbClient || !userId()) return;
+  if (!authToken) return;
   const dot = document.getElementById('syncDot');
   if (dot) dot.className = 'sync-dot busy';
   try {
-    const p = cloudPayload();
-    const { error } = await sbClient.from('progress').upsert(p, { onConflict: 'user_id' });
-    if (error) throw error;
+    await apiCall('/api/save', cloudPayload());
     if (dot) dot.className = 'sync-dot on';
   } catch(e){
     if (dot) dot.className = 'sync-dot';
@@ -1979,18 +1974,18 @@ async function pushCloud(quiet){
   }
 }
 async function pullCloud(){
-  if (!sbClient || !userId()) return false;
+  if (!authToken) return false;
   try {
-    const { data, error } = await sbClient.from('progress').select('*').eq('user_id', userId()).maybeSingle();
-    if (error) throw error;
-    if (data){
+    const data = await apiCall('/api/load');
+    if (data && Object.keys(data).length){
       state.marks = Object.assign({}, state.marks || {}, data.marks || {});
       const mergeList = (cur, arr) => { const s = new Set(cur); (arr || []).forEach(w => s.add(w)); return Array.from(s); };
       state.known = mergeList(state.known, data.known);
       state.unknown = mergeList(state.unknown, data.unknown);
       state.best = Math.max(state.best || 0, data.best || 0);
       if (data.theme) state.theme = data.theme;
-      if (data.recall !== undefined) state.recall = data.recall;
+      if (data.recall !== undefined && data.recall !== null) state.recall = data.recall;
+      state.reviseList = Array.isArray(data.revise_list) ? data.revise_list : state.reviseList;
       state.revList = Array.isArray(data.rev_list) ? data.rev_list : state.revList;
       state.revIdx = typeof data.rev_idx === 'number' ? data.rev_idx : state.revIdx;
       state.revKnown = Array.isArray(data.rev_known) ? data.rev_known : state.revKnown;
@@ -2004,11 +1999,13 @@ async function pullCloud(){
 function saveAll(){
   save(LS.marks, state.marks); save(LS.known, state.known); save(LS.unknown, state.unknown);
   save(LS.best, state.best); save(LS.theme, state.theme); save(LS.recall, state.recall);
+  save(LS.reviseList, state.reviseList);
   save(LS.revList, state.revList); save(LS.revIdx, state.revIdx);
   save(LS.revKnown, state.revKnown); save(LS.revUnknown, state.revUnknown);
 }
 const saveAndSync = (k, v) => { save(k, v); pushCloud(true); };
 const saveRevision = () => { saveAll(); pushCloud(true); };
+
 
 function loadMarks(){
   const a = read(LS.marks, {}) || {};
@@ -2031,6 +2028,7 @@ const state = {
   revIdx: read(LS.revIdx, 0) || 0,
   revKnown: loadList(LS.revKnown),
   revUnknown: loadList(LS.revUnknown),
+  reviseList: loadList(LS.reviseList),
   tab: (location.hash || '').replace('#','') || 'hsk4',
   set4: 'all4', set3: 'all3', gf: 'all', sf: 'all',
   q4: '', q3: '',
@@ -2212,19 +2210,20 @@ function moveInk(){
 /* ================= FLASHCARDS ================= */
 const DECKS = [
   ['all4', 'HSK 4'], ['top100', 'Top 100'], ['all3', 'HSK 3'],
-  ['saved', 'Saved'], ['extra', 'Older list']
+  ['saved', 'Saved'], ['revise', 'Revise'], ['extra', 'Older list']
 ];
 function deckWords(id){
   if (id === 'all4') return LEVEL4.slice();
   if (id === 'top100') return TOP100.slice();
   if (id === 'all3') return LEVEL3.slice();
   if (id === 'saved') return Object.keys(state.marks).filter(w => WORDS[w]);
+  if (id === 'revise') return state.reviseList.filter(w => WORDS[w]);
   if (id === 'extra') return EXTRA.slice();
   if (/^g\d+$/.test(id)) return (GRAMMAR_USES[+id.slice(1)] || []).slice();
   return LEVEL4.slice();
 }
 function pickDeck(id){
-  let order = [id, 'saved', 'all4', 'top100', 'all3'];
+  let order = [id, 'saved', 'revise', 'all4', 'top100', 'all3'];
   for (const d of order){
     const ws = deckWords(d);
     if (ws.length){ state.deck = d; state.deckWords = ws; state.deckIdx = 0; renderDeckBar(); showCard(); return; }
@@ -2278,13 +2277,26 @@ function judge(okNow){
   if (okNow){
     if (state.known.indexOf(w) === -1) state.known.push(w);
     const i = state.unknown.indexOf(w); if (i >= 0) state.unknown.splice(i, 1);
+    // In Revise deck: "I know" removes the word from the revise list
+    if (state.deck === 'revise'){
+      const ri = state.reviseList.indexOf(w); if (ri >= 0) state.reviseList.splice(ri, 1);
+    }
     burst();
   } else {
     if (state.unknown.indexOf(w) === -1) state.unknown.push(w);
     const i = state.known.indexOf(w); if (i >= 0) state.known.splice(i, 1);
+    // "Don't know" in ANY deck adds the word to the Revise deck
+    if (state.reviseList.indexOf(w) === -1) state.reviseList.push(w);
   }
-  saveAndSync(LS.known, state.known); saveAndSync(LS.unknown, state.unknown);
-  meters();
+  saveAndSync(LS.known, state.known);
+  saveAndSync(LS.unknown, state.unknown);
+  saveAndSync(LS.reviseList, state.reviseList);
+  meters(); renderDeckBar();
+  // If in Revise deck and word was removed, refresh deck words; else advance
+  if (state.deck === 'revise'){
+    state.deckWords = deckWords('revise');
+    if (state.deckIdx >= state.deckWords.length) state.deckIdx = 0;
+  }
   advance();
 }
 function burst(){
