@@ -1907,7 +1907,7 @@ const LS = {
   marks:'hsk4_bookmarks', known:'hsk4_known', unknown:'hsk4_unknown',
   recall:'hsk4_recall', theme:'hsk4_theme', best:'hsk4_best',
   revList:'hsk4_rev_list', revIdx:'hsk4_rev_idx', revKnown:'hsk4_rev_known', revUnknown:'hsk4_rev_unknown',
-  reviseList:'hsk4_revise_list', token:'hsk4_token'
+  reviseList:'hsk4_revise_list', token:'hsk4_token', deckPos:'hsk4_deck_pos'
 };
 const read = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return (v === null || v === undefined) ? d : v; } catch(e){ return d; } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} };
@@ -1958,7 +1958,8 @@ function cloudPayload(){
     best: state.best, theme: state.theme, recall: state.recall,
     revise_list: state.reviseList,
     rev_list: state.revList, rev_idx: state.revIdx,
-    rev_known: state.revKnown, rev_unknown: state.revUnknown
+    rev_known: state.revKnown, rev_unknown: state.revUnknown,
+    deck_pos: state.deckPos
   };
 }
 async function pushCloud(quiet){
@@ -1990,6 +1991,7 @@ async function pullCloud(){
       state.revIdx = typeof data.rev_idx === 'number' ? data.rev_idx : state.revIdx;
       state.revKnown = Array.isArray(data.rev_known) ? data.rev_known : state.revKnown;
       state.revUnknown = Array.isArray(data.rev_unknown) ? data.rev_unknown : state.revUnknown;
+      if (data.deck_pos && typeof data.deck_pos === 'object') state.deckPos = data.deck_pos;
       saveAll();
       return true;
     }
@@ -2002,6 +2004,7 @@ function saveAll(){
   save(LS.reviseList, state.reviseList);
   save(LS.revList, state.revList); save(LS.revIdx, state.revIdx);
   save(LS.revKnown, state.revKnown); save(LS.revUnknown, state.revUnknown);
+  save(LS.deckPos, state.deckPos);
 }
 const saveAndSync = (k, v) => { save(k, v); pushCloud(true); };
 const saveRevision = () => { saveAll(); pushCloud(true); };
@@ -2029,6 +2032,7 @@ const state = {
   revKnown: loadList(LS.revKnown),
   revUnknown: loadList(LS.revUnknown),
   reviseList: loadList(LS.reviseList),
+  deckPos: read(LS.deckPos, {}) || {},
   tab: (location.hash || '').replace('#','') || 'hsk4',
   set4: 'all4', set3: 'all3', gf: 'all', sf: 'all',
   q4: '', q3: '',
@@ -2226,7 +2230,15 @@ function pickDeck(id){
   let order = [id, 'saved', 'revise', 'all4', 'top100', 'all3'];
   for (const d of order){
     const ws = deckWords(d);
-    if (ws.length){ state.deck = d; state.deckWords = ws; state.deckIdx = 0; renderDeckBar(); showCard(); return; }
+    if (ws.length){
+      state.deck = d;
+      state.deckWords = ws;
+      // restore saved position for this deck, clamped to valid range
+      let pos = state.deckPos[d] || 0;
+      if (pos >= ws.length) pos = 0;
+      state.deckIdx = pos;
+      renderDeckBar(); showCard(); return;
+    }
   }
   state.deck = 'all4'; state.deckWords = []; state.deckIdx = 0;
   renderDeckBar(); showCard();
@@ -2266,9 +2278,15 @@ function flipCard(){
   sent.classList.toggle('show', show);
   $('#fcReveal').textContent = show ? 'Hide' : 'Reveal';
 }
+function saveDeckPos(){
+  if (!state.deck) return;
+  state.deckPos[state.deck] = state.deckIdx;
+  saveAndSync(LS.deckPos, state.deckPos);
+}
 function advance(){
   if (!state.deckWords.length) return;
   state.deckIdx = (state.deckIdx + 1) % state.deckWords.length;
+  saveDeckPos();
   showCard();
 }
 function judge(okNow){
@@ -2407,7 +2425,11 @@ document.addEventListener('click', e => {
     const id = chip.dataset.deck;
     const ws = deckWords(id);
     if (!ws.length){ pickDeck(id); return; }
-    state.deck = id; state.deckWords = ws; state.deckIdx = 0; renderDeckBar(); showCard(); return;
+    state.deck = id; state.deckWords = ws;
+    let pos = state.deckPos[id] || 0;
+    if (pos >= ws.length) pos = 0;
+    state.deckIdx = pos;
+    renderDeckBar(); showCard(); return;
   }
 
   const t = e.target.closest('[data-act]');

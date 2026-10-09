@@ -52,9 +52,15 @@ def init_db():
             rev_idx      INTEGER NOT NULL DEFAULT 0,
             rev_known    TEXT NOT NULL DEFAULT '[]',
             rev_unknown  TEXT NOT NULL DEFAULT '[]',
+            deck_pos     TEXT NOT NULL DEFAULT '{}',
             updated_at   TEXT
         )
     """)
+    # add column if upgrading an existing DB
+    try:
+        c.execute("ALTER TABLE progress ADD COLUMN deck_pos TEXT NOT NULL DEFAULT '{}'")
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
     conn.close()
 
@@ -132,6 +138,7 @@ def login():
 PROGRESS_FIELDS = [
     "marks", "known", "unknown", "best", "theme", "recall",
     "revise_list", "rev_list", "rev_idx", "rev_known", "rev_unknown",
+    "deck_pos",
 ]
 
 
