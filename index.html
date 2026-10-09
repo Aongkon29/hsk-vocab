@@ -376,10 +376,64 @@
   .sync-status{font-size:.74rem;color:var(--ink-3);margin-top:10px;min-height:18px;font-family:var(--mono);}
   .sync-status.ok{color:var(--ok);}
   .sync-status.no{color:var(--no);}
+
+  /* ============================ LOGIN ============================ */
+  .login-wrap{
+    position:fixed;inset:0;background:var(--paper);display:grid;place-items:center;z-index:200;padding:20px;
+  }
+  .login-box{
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+    padding:28px;max-width:380px;width:100%;box-shadow:var(--lift);
+  }
+  .login-box h2{font-family:var(--serif);font-size:1.4rem;margin-bottom:4px;}
+  .login-box h2 em{font-style:normal;color:var(--accent);}
+  .login-box .sub{font-size:.8rem;color:var(--ink-3);margin-bottom:18px;}
+  .login-box label{display:block;font-size:.74rem;color:var(--ink-2);margin-bottom:4px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.04em;}
+  .login-box input{
+    width:100%;font:inherit;font-size:.95rem;padding:0 12px;min-height:44px;margin-bottom:14px;
+    border:1px solid var(--line);border-radius:var(--r-sm);background:var(--paper);color:var(--ink);
+  }
+  .login-box input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+  .login-box .row{display:flex;gap:8px;margin-top:4px;}
+  .login-box button{flex:1;min-height:44px;border-radius:var(--r-sm);font-size:.88rem;border:1px solid var(--line);transition:.18s;cursor:pointer;}
+  .login-box .primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .login-box .primary:hover{filter:brightness(1.08);}
+  .login-box .ghost:hover{border-color:var(--ink-3);color:var(--ink);}
+  .login-err{font-size:.76rem;color:var(--no);margin-top:10px;min-height:18px;font-family:var(--mono);}
+
+  /* ============================ REVISION ============================ */
+  .rev-hud{display:flex;gap:14px;justify-content:center;font-size:.76rem;color:var(--ink-3);font-family:var(--mono);margin-bottom:12px;flex-wrap:wrap;}
+  .rev-hud b{color:var(--ink);}
+  .rev-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;}
+  .rev-actions button{
+    flex:1;min-width:120px;min-height:var(--tap);border-radius:var(--r-sm);border:1px solid var(--line);
+    font-size:.84rem;transition:all .18s var(--ease),transform .18s var(--spring);
+  }
+  .rev-actions button:active{transform:scale(.97);}
+  .rev-no:hover{border-color:var(--no);color:var(--no);background:var(--no-soft);}
+  .rev-yes:hover{border-color:var(--ok);color:var(--ok);background:var(--ok-soft);}
+  .rev-pause:hover{border-color:var(--gold);color:var(--gold);background:var(--gold-soft);}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
+
+<!-- Login screen -->
+<div class="login-wrap" id="loginWrap">
+  <div class="login-box">
+    <h2>HSK <em>3+4</em></h2>
+    <p class="sub">Sign in to sync your progress across devices.</p>
+    <label>Username</label>
+    <input id="loginUser" type="text" placeholder="your username" autocomplete="username" spellcheck="false">
+    <label>Password</label>
+    <input id="loginPass" type="password" placeholder="your password" autocomplete="current-password">
+    <div class="row">
+      <button class="ghost" id="loginSignup">Create account</button>
+      <button class="primary" id="loginBtn">Sign in</button>
+    </div>
+    <div class="login-err" id="loginErr"></div>
+  </div>
+</div>
 
 <header class="masthead">
   <div class="masthead-inner">
@@ -413,6 +467,7 @@
     <button data-tab="hsk3" role="tab" aria-selected="false">HSK 3<b id="tabN3"></b></button>
     <button data-tab="grammar" role="tab" aria-selected="false">Grammar<b>52</b></button>
     <button data-tab="saved" role="tab" aria-selected="false">Saved<b id="tabNs"></b></button>
+    <button data-tab="revision" role="tab" aria-selected="false">Revision<b id="tabNrev"></b></button>
     <button data-tab="cards" role="tab" aria-selected="false">Cards</button>
     <button data-tab="quiz" role="tab" aria-selected="false">Quiz</button>
     <span class="tab-ink" id="tabInk"></span>
@@ -491,6 +546,45 @@
     <div class="grid" id="gs"></div>
   </section>
 
+  <!-- ============ REVISION ============ -->
+  <section class="panel" id="p-revision">
+    <div class="bar">
+      <div class="chips">
+        <button class="link-btn" id="revStart">Start HSK 4 revision</button>
+        <button class="link-btn" id="revResume" hidden>Resume</button>
+        <button class="link-btn" id="revReset">Reset</button>
+      </div>
+      <span class="count" id="revCount"></span>
+    </div>
+    <div class="fc-wrap" id="revWrap">
+      <div class="rev-hud">
+        <span>left <b id="revLeft">0</b></span>
+        <span>known <b id="revKnownCnt">0</b></span>
+        <span>repeat <b id="revRepeatCnt">0</b></span>
+      </div>
+      <div class="fc">
+        <div class="fc-hanzi" id="revHanzi">—</div>
+        <button class="fc-reveal" id="revReveal">Reveal</button>
+        <div class="fc-meta" id="revMeta">
+          <div class="fc-py" id="revPy"></div>
+          <div class="fc-en" id="revEn"></div>
+        </div>
+        <div class="fc-sent" id="revSent">
+          <div class="fc-cn" id="revCn"></div>
+          <div class="fc-spy" id="revSpy"></div>
+          <div class="fc-sen" id="revSe"></div>
+        </div>
+      </div>
+      <div class="fc-progress"><i id="revBar" style="width:0%"></i></div>
+      <div class="fc-idx" id="revProgress">0 / 0</div>
+      <div class="rev-actions">
+        <button class="rev-no" id="revNo">Don't know (repeat)</button>
+        <button class="rev-yes" id="revYes">I know (remove)</button>
+        <button class="rev-pause" id="revPause">Save &amp; pause</button>
+      </div>
+    </div>
+  </section>
+
   <!-- ============ CARDS ============ -->
   <section class="panel" id="p-cards">
     <div class="deckbar" id="deckbar"></div>
@@ -557,19 +651,7 @@
      in this browser only.</p>
 </footer>
 
-<!-- Sync modal -->
-<div class="sync-modal" id="syncModal">
-  <div class="sync-box">
-    <h3>Sync across devices</h3>
-    <p>Pick a sync key (any name). Enter the same key on your phone and PC to share progress. Your data lives in a free Supabase database.</p>
-    <input id="syncKey" type="text" placeholder="e.g. aongkon29" autocomplete="off" spellcheck="false">
-    <div class="row">
-      <button class="ghost" id="syncCancel">Cancel</button>
-      <button class="primary" id="syncSave">Save &amp; sync</button>
-    </div>
-    <div class="sync-status" id="syncStatus"></div>
-  </div>
-</div>
+<!-- Sync modal (removed — login handles auth now) -->
 
 <script>
 /* ================= GENERATED DATA ================= */
@@ -1822,37 +1904,73 @@ function filterGrammar(mode, btn) {
 
 
 /* ================= STORAGE (keeps your existing data) ================= */
-const LS = { marks:'hsk4_bookmarks', known:'hsk4_known', unknown:'hsk4_unknown', recall:'hsk4_recall', theme:'hsk4_theme', best:'hsk4_best', syncKey:'hsk4_sync_key' };
+const LS = {
+  marks:'hsk4_bookmarks', known:'hsk4_known', unknown:'hsk4_unknown',
+  recall:'hsk4_recall', theme:'hsk4_theme', best:'hsk4_best',
+  revList:'hsk4_rev_list', revIdx:'hsk4_rev_idx', revKnown:'hsk4_rev_known', revUnknown:'hsk4_rev_unknown'
+};
 const read = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return (v === null || v === undefined) ? d : v; } catch(e){ return d; } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} };
 
-/* ================= CLOUD SYNC (Supabase) ================= */
+/* ================= AUTH (Supabase) ================= */
 const SB_URL = 'YOUR_SUPABASE_URL';
 const SB_KEY = 'YOUR_SUPABASE_ANON_KEY';
 let sbClient = null;
-try { if (window.supabase && SB_URL && SB_URL.startsWith('http')) sbClient = window.supabase.createClient(SB_URL, SB_KEY); } catch(e){}
-const syncKey = () => { try { return localStorage.getItem(LS.syncKey) || ''; } catch(e){ return ''; } };
+try { if (window.supabase && SB_URL && SB_URL.startsWith('http')) sbClient = window.supabase.createClient(SB_URL, SB_KEY, { persistSession: true, autoRefreshToken: true }); } catch(e){}
 
+let currentUser = null;
+function userId(){ return currentUser ? currentUser.id : null; }
+function fakeEmail(u){ return (u || '').trim().toLowerCase() + '@hsk-vocab.local'; }
+
+async function authSignup(user, pass){
+  if (!sbClient) throw new Error('Supabase not configured');
+  const { data, error } = await sbClient.auth.signUp({ email: fakeEmail(user), password: pass });
+  if (error) throw error;
+  currentUser = data.user;
+  return currentUser;
+}
+async function authSignin(user, pass){
+  if (!sbClient) throw new Error('Supabase not configured');
+  const { data, error } = await sbClient.auth.signInWithPassword({ email: fakeEmail(user), password: pass });
+  if (error) throw error;
+  currentUser = data.user;
+  return currentUser;
+}
+async function authSignout(){
+  if (sbClient) try { await sbClient.auth.signOut(); } catch(e){}
+  currentUser = null;
+}
+async function authSession(){
+  if (!sbClient) return null;
+  const { data } = await sbClient.auth.getSession();
+  currentUser = data.session ? data.session.user : null;
+  return currentUser;
+}
+
+/* ================= CLOUD SYNC (per authenticated user) ================= */
 function cloudPayload(){
   return {
-    user_key: syncKey(),
+    user_id: userId(),
     marks: state.marks,
     known: state.known,
     unknown: state.unknown,
     best: state.best,
     theme: state.theme,
     recall: state.recall,
+    rev_list: state.revList,
+    rev_idx: state.revIdx,
+    rev_known: state.revKnown,
+    rev_unknown: state.revUnknown,
     updated_at: new Date().toISOString()
   };
 }
 async function pushCloud(quiet){
-  const k = syncKey();
-  if (!sbClient || !k) return;
+  if (!sbClient || !userId()) return;
   const dot = document.getElementById('syncDot');
   if (dot) dot.className = 'sync-dot busy';
   try {
     const p = cloudPayload();
-    const { error } = await sbClient.from('progress').upsert(p, { onConflict: 'user_key' });
+    const { error } = await sbClient.from('progress').upsert(p, { onConflict: 'user_id' });
     if (error) throw error;
     if (dot) dot.className = 'sync-dot on';
   } catch(e){
@@ -1861,33 +1979,40 @@ async function pushCloud(quiet){
   }
 }
 async function pullCloud(){
-  const k = syncKey();
-  if (!sbClient || !k) return false;
+  if (!sbClient || !userId()) return false;
   try {
-    const { data, error } = await sbClient.from('progress').select('*').eq('user_key', k).maybeSingle();
+    const { data, error } = await sbClient.from('progress').select('*').eq('user_id', userId()).maybeSingle();
     if (error) throw error;
     if (data){
       state.marks = Object.assign({}, state.marks || {}, data.marks || {});
-      const mergeList = (cur, arr) => {
-        const s = new Set(cur); (arr || []).forEach(w => s.add(w)); return Array.from(s);
-      };
+      const mergeList = (cur, arr) => { const s = new Set(cur); (arr || []).forEach(w => s.add(w)); return Array.from(s); };
       state.known = mergeList(state.known, data.known);
       state.unknown = mergeList(state.unknown, data.unknown);
       state.best = Math.max(state.best || 0, data.best || 0);
       if (data.theme) state.theme = data.theme;
       if (data.recall !== undefined) state.recall = data.recall;
-      save(LS.marks, state.marks); save(LS.known, state.known); save(LS.unknown, state.unknown);
-      save(LS.best, state.best); save(LS.theme, state.theme); save(LS.recall, state.recall);
+      state.revList = Array.isArray(data.rev_list) ? data.rev_list : state.revList;
+      state.revIdx = typeof data.rev_idx === 'number' ? data.rev_idx : state.revIdx;
+      state.revKnown = Array.isArray(data.rev_known) ? data.rev_known : state.revKnown;
+      state.revUnknown = Array.isArray(data.rev_unknown) ? data.rev_unknown : state.revUnknown;
+      saveAll();
       return true;
     }
   } catch(e){ console.warn('cloud pull failed', e); }
   return false;
 }
+function saveAll(){
+  save(LS.marks, state.marks); save(LS.known, state.known); save(LS.unknown, state.unknown);
+  save(LS.best, state.best); save(LS.theme, state.theme); save(LS.recall, state.recall);
+  save(LS.revList, state.revList); save(LS.revIdx, state.revIdx);
+  save(LS.revKnown, state.revKnown); save(LS.revUnknown, state.revUnknown);
+}
 const saveAndSync = (k, v) => { save(k, v); pushCloud(true); };
+const saveRevision = () => { saveAll(); pushCloud(true); };
 
 function loadMarks(){
   const a = read(LS.marks, {}) || {};
-  const b = read('hsk4_marks', {}) || {};   // key used by an earlier build
+  const b = read('hsk4_marks', {}) || {};
   return Object.assign({}, a, b);
 }
 function loadList(k){
@@ -1902,6 +2027,10 @@ const state = {
   best: read(LS.best, 0) || 0,
   recall: read(LS.recall, true),
   theme: (() => { try { return localStorage.getItem(LS.theme); } catch(e){ return null; } })(),
+  revList: read(LS.revList, []),
+  revIdx: read(LS.revIdx, 0) || 0,
+  revKnown: loadList(LS.revKnown),
+  revUnknown: loadList(LS.revUnknown),
   tab: (location.hash || '').replace('#','') || 'hsk4',
   set4: 'all4', set3: 'all3', gf: 'all', sf: 'all',
   q4: '', q3: '',
@@ -2056,7 +2185,7 @@ function meters(){
 }
 
 /* ================= TABS ================= */
-const TABS = ['hsk4','hsk3','grammar','saved','cards','quiz'];
+const TABS = ['hsk4','hsk3','grammar','saved','revision','cards','quiz'];
 function goTab(name, push){
   if (TABS.indexOf(name) === -1) name = 'hsk4';
   state.tab = name;
@@ -2424,45 +2553,99 @@ $('#recallToggle').addEventListener('click', () => {
   renderHSK4(); renderHSK3(); renderSaved(); showCard();
 });
 
-/* ================= SYNC UI ================= */
-const syncModal = $('#syncModal');
-const syncStatus = $('#syncStatus');
-const syncDotEl = $('#syncDot');
-function setSyncDot(){
-  if (!syncDotEl) return;
-  if (!sbClient) syncDotEl.className = 'sync-dot';
-  else if (syncKey()) syncDotEl.className = 'sync-dot on';
-  else syncDotEl.className = 'sync-dot';
+/* ================= REVISION LOGIC ================= */
+function revTotal(){ return state.revList.length + state.revKnown.length; }
+function showRevCard(){
+  const w = state.revList[state.revIdx];
+  const has = !!w;
+  $('#revHanzi').textContent = has ? w : (revTotal() ? 'All done!' : '—');
+  const d = has ? entryOf(w) : ['', '', '', '', '', 0, 'x'];
+  $('#revPy').textContent = d[0]; $('#revEn').textContent = d[1];
+  $('#revCn').textContent = d[2]; $('#revSpy').textContent = d[3]; $('#revSe').textContent = d[4];
+  $('#revReveal').hidden = !has;
+  $('#revReveal').textContent = state.recall ? 'Reveal' : 'Hide';
+  $('#revMeta').classList.toggle('show', !state.recall);
+  $('#revSent').classList.toggle('show', !state.recall);
+  const total = revTotal();
+  $('#revProgress').textContent = has ? (state.revIdx + 1) + ' / ' + state.revList.length : '0 / 0';
+  $('#revBar').style.width = total ? (state.revKnown.length / total * 100) + '%' : '0%';
+  $('#revLeft').textContent = state.revList.length;
+  $('#revKnownCnt').textContent = state.revKnown.length;
+  $('#revRepeatCnt').textContent = state.revUnknown.length;
+  $('#tabNrev').textContent = state.revList.length || '';
+  $('#revCount').textContent = state.revList.length + ' left · ' + state.revKnown.length + ' known';
+  $('#revResume').hidden = !state.revList.length;
 }
-function showSyncStatus(msg, cls){ syncStatus.textContent = msg; syncStatus.className = 'sync-status' + (cls ? ' ' + cls : ''); }
-$('#syncBtn').addEventListener('click', () => {
-  $('#syncKey').value = syncKey();
-  showSyncStatus(sbClient ? '' : 'Supabase not configured — add your URL + key in the HTML.', 'no');
-  syncModal.classList.add('on');
-});
-$('#syncCancel').addEventListener('click', () => syncModal.classList.remove('on'));
-syncModal.addEventListener('click', e => { if (e.target === syncModal) syncModal.classList.remove('on'); });
-$('#syncSave').addEventListener('click', async () => {
-  const k = $('#syncKey').value.trim().toLowerCase();
-  if (!k){ showSyncStatus('Enter a sync key.', 'no'); return; }
-  try { localStorage.setItem(LS.syncKey, k); } catch(e){}
-  showSyncStatus('Pulling from cloud…', '');
-  const pulled = await pullCloud();
-  if (pulled){
-    showSyncStatus('Synced — refreshing…', 'ok');
-    setTimeout(() => {
-      applyTheme();
-      $('#recallToggle').setAttribute('aria-pressed', state.recall ? 'true' : 'false');
-      renderHSK4(); renderHSK3(); renderSaved(); meters();
-      showSyncStatus('Synced ✓', 'ok');
-    }, 300);
+function startRevision(){
+  state.revList = LEVEL4.slice().sort(() => Math.random() - 0.5);
+  state.revIdx = 0; state.revKnown = []; state.revUnknown = [];
+  saveRevision(); showRevCard();
+}
+function resetRevision(){
+  state.revList = []; state.revIdx = 0; state.revKnown = []; state.revUnknown = [];
+  saveRevision(); showRevCard();
+}
+function judgeRevision(known){
+  const w = state.revList[state.revIdx];
+  if (!w) return;
+  if (known){
+    if (state.revKnown.indexOf(w) === -1) state.revKnown.push(w);
+    state.revList.splice(state.revIdx, 1);
+    const i = state.revUnknown.indexOf(w); if (i >= 0) state.revUnknown.splice(i, 1);
   } else {
-    showSyncStatus('No cloud data yet — pushing this device\'s progress…', '');
-    await pushCloud(false);
-    showSyncStatus('Pushed to cloud ✓', 'ok');
+    if (state.revUnknown.indexOf(w) === -1) state.revUnknown.push(w);
+    state.revList.splice(state.revIdx, 1);
+    state.revList.push(w);
   }
-  setSyncDot();
+  if (state.revIdx >= state.revList.length) state.revIdx = 0;
+  saveRevision(); showRevCard();
+}
+$('#revStart').addEventListener('click', startRevision);
+$('#revReset').addEventListener('click', () => { if (confirm('Reset revision progress?')) resetRevision(); });
+$('#revResume').addEventListener('click', showRevCard);
+$('#revReveal').addEventListener('click', () => {
+  const meta = $('#revMeta'), sent = $('#revSent');
+  const show = !meta.classList.contains('show');
+  meta.classList.toggle('show', show); sent.classList.toggle('show', show);
+  $('#revReveal').textContent = show ? 'Hide' : 'Reveal';
 });
+$('#revNo').addEventListener('click', () => judgeRevision(false));
+$('#revYes').addEventListener('click', () => { judgeRevision(true); burst(); });
+$('#revPause').addEventListener('click', () => { saveRevision(); const s = $('#revPause'); s.textContent = 'Saved OK'; setTimeout(() => s.textContent = 'Save & pause', 1200); });
+
+/* ================= AUTH UI ================= */
+const loginWrap = $('#loginWrap');
+const loginErr = $('#loginErr');
+function showLogin(){ loginWrap.style.display = 'grid'; }
+function hideLogin(){ loginWrap.style.display = 'none'; }
+function setLoginErr(msg){ loginErr.textContent = msg || ''; }
+async function doLogin(signup){
+  const u = $('#loginUser').value.trim();
+  const p = $('#loginPass').value;
+  if (!u || !p){ setLoginErr('Enter username and password.'); return; }
+  setLoginErr(signup ? 'Creating account...' : 'Signing in...');
+  try {
+    if (signup) await authSignup(u, p);
+    else await authSignin(u, p);
+    setLoginErr('');
+    hideLogin();
+    await afterLogin();
+  } catch(e){
+    setLoginErr(e.message || 'Login failed.');
+  }
+}
+$('#loginBtn').addEventListener('click', () => doLogin(false));
+$('#loginSignup').addEventListener('click', () => doLogin(true));
+$('#loginPass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(false); });
+
+async function afterLogin(){
+  const pulled = await pullCloud();
+  applyTheme();
+  $('#recallToggle').setAttribute('aria-pressed', state.recall ? 'true' : 'false');
+  renderHSK4(); renderHSK3(); renderSaved(); meters(); showRevCard();
+  if (!pulled) pushCloud(false);
+  const dot = $('#syncDot'); if (dot) dot.className = 'sync-dot on';
+}
 
 /* ================= INIT ================= */
 $('#n4').textContent = LEVEL4.length;
@@ -2477,21 +2660,23 @@ if (!state.theme){
 applyTheme();
 renderHSK4(); renderHSK3(); renderSaved(); renderGrammar();
 renderDeckBar(); pickDeck('saved');
-meters();
+meters(); showRevCard();
 goTab(state.tab, false);
 window.addEventListener('resize', moveInk);
 window.addEventListener('hashchange', () => goTab((location.hash || '').replace('#',''), false));
 
-/* pull cloud progress on load if a sync key is set */
+/* Sync button forces a push */
+$('#syncBtn').addEventListener('click', async () => {
+  if (!currentUser){ showLogin(); return; }
+  await pushCloud(false);
+  const dot = $('#syncDot'); if (dot) dot.className = 'sync-dot on';
+});
+
+/* Check session on load */
 (async () => {
-  setSyncDot();
-  if (!syncKey() || !sbClient) return;
-  const pulled = await pullCloud();
-  if (pulled){
-    applyTheme();
-    $('#recallToggle').setAttribute('aria-pressed', state.recall ? 'true' : 'false');
-    renderHSK4(); renderHSK3(); renderSaved(); meters();
-  }
+  const u = await authSession();
+  if (u){ hideLogin(); await afterLogin(); }
+  else { showLogin(); }
 })();
 </script>
 </body>
